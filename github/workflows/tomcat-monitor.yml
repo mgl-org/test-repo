@@ -1,0 +1,63 @@
+name: Tomcat Server Monitor
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # Runs every 15 minutes
+
+jobs:
+  check-servers:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check Tomcat servers and send email if down
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fetch = require('node-fetch');
+          const nodemailer = require('nodemailer');
+
+          // List your public Tomcat server URLs here
+          const tomcatServers = [
+            "http://public-ip-or-domain1:8080/healthcheck",
+            "http://public-ip-or-domain2:8080/healthcheck"
+          ];
+
+          async function checkServers() {
+            const downServers = [];
+            for (const url of tomcatServers) {
+              try {
+                const res = await fetch(url, { timeout: 5000 });
+                if (!res.ok) {
+                  downServers.push(url);
+                }
+              } catch (e) {
+                downServers.push(url);
+              }
+            }
+            return downServers;
+          }
+
+          const downServers = await checkServers();
+
+          if (downServers.length > 0) {
+            // Setup nodemailer with Gmail SMTP
+            const transporter = nodemailer.createTransport({
+              service: 'gmail',
+              auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS,
+              },
+            });
+
+            const mailOptions = {
+              from: process.env.SMTP_USER,
+              to: process.env.ALERT_EMAIL,
+              subject: 'Tomcat Server Down Alert',
+              text: `The following Tomcat servers are down or not responding:\n${downServers.join('\n')}`,
+            };
+
+            await transporter.sendMail(mailOptions);
+            console.log('Alert email sent!');
+          } else {
+            console.log('All Tomcat servers are up!');
+          }
