@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Initialize
-        run: mkdir -p logs && echo "⏱ Monitor Start: $(date)" > logs/monitor.log
+        run: "mkdir -p logs && echo '⏱ Monitor Start: $(date)' > logs/monitor.log"
 
       - name: Check Tomcat URLs in Parallel
         run: |
