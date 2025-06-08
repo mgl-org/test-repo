@@ -1,63 +1,56 @@
-name: Tomcat Server Monitor
+name: Fast Multi-Tomcat Monitor
 
 on:
   schedule:
-    - cron: '*/15 * * * *'   # Runs every 15 minutes
+    - cron: '*/5 * * * *'  # Every 5 minutes
+  workflow_dispatch:
 
 jobs:
-  check-servers:
+  monitor:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Check Tomcat servers and send email if down
-      uses: actions/github-script@v6
-      with:
-        script: |
-          const fetch = require('node-fetch');
-          const nodemailer = require('nodemailer');
+      - name: Initialize
+        run: mkdir -p logs && echo "⏱ Monitor Start: $(date)" > logs/monitor.log
 
-          // List your public Tomcat server URLs here
-          const tomcatServers = [
-            "http://public-ip-or-domain1:8080/healthcheck",
-            "http://public-ip-or-domain2:8080/healthcheck"
-          ];
+      - name: Check Tomcat URLs in Parallel
+        run: |
+          urls=(
+            "https://www.google.com"
+          )
 
-          async function checkServers() {
-            const downServers = [];
-            for (const url of tomcatServers) {
-              try {
-                const res = await fetch(url, { timeout: 5000 });
-                if (!res.ok) {
-                  downServers.push(url);
-                }
-              } catch (e) {
-                downServers.push(url);
-              }
-            }
-            return downServers;
+          check_url() {
+            url=$1
+            status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+            timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+            
+            if [ "$status" != "200" ]; then
+              echo "❌ [$timestamp] DOWN - $url (Status: $status)" >> logs/monitor.log
+
+              # echo -e "Subject: ALERT: Tomcat Down\n\nTomcat at $url is NOT reachable.\nStatus: $status\nTime: $timestamp" \
+              # | msmtp --host=smtp.sendgrid.net \
+              #         --port=587 \
+              #         --auth=on \
+              #         --user="$SMTP_USER" \
+              #         --password="$SMTP_PASS" \
+              #         --tls=on \
+              #         --from="Tomcat Monitor <alert@yourdomain.com>" \
+              #         "$ALERT_EMAIL"
+            else
+              echo "✅ [$timestamp] UP   - $url (Status: $status)" >> logs/monitor.log
+            fi
           }
 
-          const downServers = await checkServers();
+          export -f check_url
+          printf "%s\n" "${urls[@]}" | xargs -n1 -P4 -I{} bash -c 'check_url "$@"' _ {}
 
-          if (downServers.length > 0) {
-            // Setup nodemailer with Gmail SMTP
-            const transporter = nodemailer.createTransport({
-              service: 'gmail',
-              auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS,
-              },
-            });
+        # env:
+        #   SMTP_USER: ${{ secrets.SMTP_USER }}
+        #   SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        #   ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
 
-            const mailOptions = {
-              from: process.env.SMTP_USER,
-              to: process.env.ALERT_EMAIL,
-              subject: 'Tomcat Server Down Alert',
-              text: `The following Tomcat servers are down or not responding:\n${downServers.join('\n')}`,
-            };
-
-            await transporter.sendMail(mailOptions);
-            console.log('Alert email sent!');
-          } else {
-            console.log('All Tomcat servers are up!');
-          }
+      - name: Upload Monitor Log
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitor-logs
+          path: logs/monitor.log
