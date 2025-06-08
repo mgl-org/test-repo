@@ -16,7 +16,9 @@ jobs:
       - name: Check Tomcat URLs in Parallel
         run: |
           urls=(
-            "https://www.google.com/"
+            "https://mglapp1.mahanagargas.com:8443/"
+            "https://mglapp2.mahanagargas.com:8443/"
+            "https://mglapp3.mahanagargas.com:8443/"
           )
 
           check_url() {
